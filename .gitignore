@@ -1,0 +1,8 @@
+# Saved models
+saved_models/
+
+# Saved images
+saved_images/
+
+# Temporary files
+temp/
