@@ -1,8 +1,5 @@
-# Saved models
-saved_models/
+# Output
+output/
 
-# Saved images
-saved_images/
-
-# Temporary files
-temp/
+# .mat files
+*/*.mat
