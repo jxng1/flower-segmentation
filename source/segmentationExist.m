@@ -10,7 +10,7 @@ maxEpochs = 1;
 miniBatchSize = 32;
 validationFrequency = 25;
 
-% preprocess settings
+% preprocessing settings
 preprocessData = true;
 
 % fix missing labels
@@ -38,12 +38,12 @@ blurSettings.method = 'gaussian';
 % box={kernelSize} e.g. {5}
 % median={windowSize} e.g. {[3, 3]}
 % anisotropic={numIterations} e.g. {20}
-blurSettings.params = {2.5};
+blurSettings.params = {0.8};
 
 % sharpen settings
 sharpenSettings = struct;
 sharpenSettings.apply = false;
-sharpenSettings.amount = 0.5;
+sharpenSettings.amount = 1.5;
 sharpenSettings.radius = 2.5;
 
 % enhancement settings
@@ -66,6 +66,7 @@ labelFiles = dir(fullfile(dirBaseData, dirLabels, '*.png'));
 % extract names without extensions
 imageFilesNames = {imageFiles.name};
 labelFilesNames = {labelFiles.name};
+
 imageFilesNames = cellfun(@(x) strtok(x, '.'), ...
     imageFilesNames, ...
     'UniformOutput', false);
@@ -111,7 +112,11 @@ cdsTrain = subset(cds, 1:trainIdx);
 cdsValidation = subset(cds, trainIdx:(trainIdx + validationIdx));
 cdsTest = subset(cds, (trainIdx + validationIdx):cdsLength);
 
-if trainNewModel    
+% datetime
+dtStr = string(datetime('now', 'Format', 'yyyyMMdHHmmss'));
+saveLocationStr = dtStr;
+
+if trainNewModel
     % preprocess image given flag
     tcds = cdsTrain.copy;
     if preprocessData
@@ -224,173 +229,68 @@ if trainNewModel
     % setup net
     imageSize = [256, 256, 3];
     numClasses = numel(classNames);
+    network = "resnet18";
+    net = deeplabv3plus(imageSize, numClasses, network);
 
-    % encoder layers
-    encoderLayers = [
-        imageInputLayer(imageSize, 'Name', 'input_image')
-        
-        convolution2dLayer(3, 64, 'Padding', 'same', 'Name', 'conv1_1')
-        batchNormalizationLayer('Name', 'bn1_1')
-        reluLayer('Name', 'relu1_1')
-        convolution2dLayer(3, 64, 'Padding', 'same', 'Name', 'conv1_2')
-        batchNormalizationLayer('Name', 'bn1_2')
-        reluLayer('Name', 'relu1_2')
-        
-        maxPooling2dLayer(2, 'Stride', 2, 'Name', 'pool1')
-    
-        convolution2dLayer(3, 128, 'Padding', 'same', 'Name', 'conv2_1')
-        batchNormalizationLayer('Name', 'bn2_1')
-        reluLayer('Name', 'relu2_1')
-        convolution2dLayer(3, 128, 'Padding', 'same', 'Name', 'conv2_2')
-        batchNormalizationLayer('Name', 'bn2_2')
-        reluLayer('Name', 'relu2_2')
-        
-        maxPooling2dLayer(2, 'Stride', 2, 'Name', 'pool2')
-    
-        convolution2dLayer(3, 256, 'Padding', 'same', 'Name', 'conv3_1')
-        batchNormalizationLayer('Name', 'bn3_1')
-        reluLayer('Name', 'relu3_1')
-        convolution2dLayer(3, 256, 'Padding', 'same', 'Name', 'conv3_2')
-        batchNormalizationLayer('Name', 'bn3_2')
-        reluLayer('Name', 'relu3_2')
-        
-        maxPooling2dLayer(2, 'Stride', 2, 'Name', 'pool3')
-        
-        convolution2dLayer(3, 512, 'Padding', 'same', 'Name', 'conv4_1')
-        batchNormalizationLayer('Name', 'bn4_1')
-        reluLayer('Name', 'relu4_1')
-        convolution2dLayer(3, 512, 'Padding', 'same', 'Name', 'conv4_2')
-        batchNormalizationLayer('Name', 'bn4_2')
-        reluLayer('Name', 'relu4_2')
+    % analyzeNetwork(net);
 
-        dropoutLayer(0.5, 'Name', 'drop4')
-
-        maxPooling2dLayer(2, 'Stride', 2, 'Name', 'pool4')
-
-        convolution2dLayer(3, 1024, 'Padding', 'same', 'Name', 'conv5_1')
-        batchNormalizationLayer('Name', 'bn5_1')
-        reluLayer('Name', 'relu5_1')
-        convolution2dLayer(3, 1024, 'Padding', 'same', 'Name', 'conv5_2')
-        batchNormalizationLayer('Name', 'bn5_2')
-        reluLayer('Name', 'relu5_2')
-        dropoutLayer(0.5, 'Name', 'drop5')
-    ];
-
-    % decoder layers
-    decoderLayers = [
-        transposedConv2dLayer(2, 512, 'Stride', 2, 'Name', 'transconv4')
-        batchNormalizationLayer('Name', 'bn_transconv4')
-        concatenationLayer(3, 2, 'Name', 'concat4')
-        convolution2dLayer(3, 512, 'Padding', 'same', 'Name', 'upconv4_1')
-        batchNormalizationLayer('Name', 'bn_upconv4_1')
-        reluLayer('Name', 'uprelu4_1')
-        convolution2dLayer(3, 512, 'Padding', 'same', 'Name', 'upconv4_2')
-        batchNormalizationLayer('Name', 'bn_upconv4_2')
-        reluLayer('Name', 'uprelu4_2')
-        
-        transposedConv2dLayer(2, 256, 'Stride', 2, 'Name', 'transconv3')
-        batchNormalizationLayer('Name', 'bn_transconv3')
-        concatenationLayer(3, 2, 'Name', 'concat3')
-        convolution2dLayer(3, 256, 'Padding', 'same', 'Name', 'upconv3_1')
-        batchNormalizationLayer('Name', 'bn_upconv3_1')
-        reluLayer('Name', 'uprelu3_1')
-        convolution2dLayer(3, 256, 'Padding', 'same', 'Name', 'upconv3_2')
-        batchNormalizationLayer('Name', 'bn_upconv3_2')
-        reluLayer('Name', 'uprelu3_2')
-        
-        transposedConv2dLayer(2, 128, 'Stride', 2, 'Name', 'transconv2')
-        batchNormalizationLayer('Name', 'bn_transconv2')
-        concatenationLayer(3, 2, 'Name', 'concat2')
-        convolution2dLayer(3, 128, 'Padding', 'same', 'Name', 'upconv2_1')
-        batchNormalizationLayer('Name', 'bn_upconv2_1')
-        reluLayer('Name', 'uprelu2_1')
-        convolution2dLayer(3, 128, 'Padding', 'same', 'Name', 'upconv2_2')
-        batchNormalizationLayer('Name', 'bn_upconv2_2')
-        reluLayer('Name', 'uprelu2_2')
-        
-        transposedConv2dLayer(2, 64, 'Stride', 2, 'Name', 'transconv1')
-        batchNormalizationLayer('Name', 'bn_transconv1')
-        concatenationLayer(3, 2, 'Name', 'concat1')
-        convolution2dLayer(3, 64, 'Padding', 'same', 'Name', 'upconv1_1')
-        batchNormalizationLayer('Name', 'bn_upconv1_1')
-        reluLayer('Name', 'uprelu1_1')
-        convolution2dLayer(3, 64, 'Padding', 'same', 'Name', 'upconv1_2')
-        batchNormalizationLayer('Name', 'bn_upconv1_2')
-        reluLayer('Name', 'uprelu1_2')
-        
-        convolution2dLayer(1, numClasses, 'Name', 'output_conv')
-        softmaxLayer('Name', 'softmax')
+    % add pixel classification layer
+    layers = [
         pixelClassificationLayer('Name', 'output')
     ];
+    net = addLayers(net, layers);
+    % connect layers
+    net = connectLayers(net, 'softmax-out', 'output');
 
-    layers = [
-        encoderLayers
-        decoderLayers
-    ];
-
-    net = layerGraph(layers);
-
-    net = disconnectLayers(net, 'bn_transconv4', 'concat4/in1');
-    net = connectLayers(net, 'drop4', 'concat4/in1');
-    net = connectLayers(net, 'bn_transconv4', 'concat4/in2');
-
-    net = disconnectLayers(net, 'bn_transconv3', 'concat3/in1');
-    net = connectLayers(net, 'conv3_2', 'concat3/in1');
-    net = connectLayers(net, 'bn_transconv3', 'concat3/in2');
-
-    net = disconnectLayers(net, 'bn_transconv2', 'concat2/in1');
-    net = connectLayers(net, 'conv2_2', 'concat2/in1');
-    net = connectLayers(net, 'bn_transconv2', 'concat2/in2');
-
-    net = disconnectLayers(net, 'bn_transconv1', 'concat1/in1');
-    net = connectLayers(net, 'conv1_2', 'concat1/in1');
-    net = connectLayers(net, 'bn_transconv1', 'concat1/in2');
-
-    %analyzeNetwork(net);
+    % analyzeNetwork(net);
     
     % specify training options
     options = trainingOptions('sgdm', ...
         'MaxEpochs', maxEpochs, ...
-        'MiniBatchSize', miniBatchSize, ...
-        'InitialLearnRate', 1e-4, ...
+        'InitialLearnRate', 1e-5, ...
         'L2Regularization', 1e-2, ...
+        'MiniBatchSize', miniBatchSize, ...
         'Plots', 'training-progress', ...
         'ExecutionEnvironment', 'gpu', ...
         'ValidationData', cdsValidation, ...
         'ValidationFrequency', validationFrequency, ...
         'Verbose', true);
 
+    %figure
+    %plot(net)
     %analyzeNetwork(net);
 
-    % net = dlnetwork(net, 'Initialize', true);
-    % Y = rand(numClasses, 12);
-    % labels = randi(numClasses, [1, 12]);
-    % T = onehotencode(labels, 1, 'ClassNames', 1:numClasses);
-    % weights = dlarray(rand(1, numClasses));
+    % train network
+    [net, info] = trainNetwork(cdsTrainFinal, net.layerGraph, options);
 
-    %lossFcn = @(Y, T) weightedCrossEntropyLoss(Y, T, weights);
-    %[net, info] = trainnet(cdsTrainFinal, net, lossFcn, options);
-    [net, info] = trainNetwork(cdsTrainFinal, net, options);
+    if not(isfolder('output'))
+        mkdir('output');
+    end
+    
+    if not(isfolder(fullfile('output', 'segmentationExist')))
+        mkdir(fullfile('output', 'segmentationExist'));
+    end
 
-    % save network after training
-    dtStr = string(datetime('now', 'Format', 'yyyyMMdHHmmss'));
+    mkdir(fullfile('output', 'segmentationExist', saveLocationStr));
     if saveModel
         % for repeated testing
-        % save(fullfile('saved_models', 'segmentationOwn', dtStr + '_segmentownnet.mat'), ...
-        %     'net');
+        save(fullfile('output', 'segmentationExist', saveLocationStr, 'model.mat'), ...
+            'net');
         % final save
-        save('segmentownnet.mat', 'net');
+        save('segmentexistnet.mat', 'net');
     end
 
     pretrainedModel.net = net;
 end
 
-% TODO: needs work upon for purely loading a trained model(final step)
+% Segmentation(Testing)
+% ----------------------------------------------------------------------
+
 if ~trainNewModel
     % pretrainedModel = load(fullfile('saved_models', ...
-    %     'segmentationOwn', ...
-    %     '20240425214302_segmentownnet.mat'))
-    pretrainedModel = load('segmentownnet.mat')
+    %     'segmentationExist', ...
+    %     '20240426154409_segmentexistnet.mat'))
+    pretrainedModel = load('segmentexistnet.mat')
 end
 
 % segment images
@@ -398,24 +298,14 @@ results = semanticseg(cdsTest.UnderlyingDatastores{1}, ...
     pretrainedModel.net, ...
     'MiniBatchSize', 1, ...
     'Classes', ["null", "flower", "leaves", "background", "sky"], ...
-    'WriteLocation', "temp");
-
-% segmented labels output using datetime
-dt = datetime('now', ...
-    'TimeZone', 'local', ...
-    'Format', 'yyyyMMdHHmmss');
-dtStr = string(dt);
-saveLocationStr = dtStr; %+ '_' + detailStr;
-mkdir(fullfile('images', 'segmentationOwn'), ...
-    fullfile(saveLocationStr));
+    'WriteLocation', fullfile('output', 'segmentationExist', saveLocationStr));
 
 % show a couple result images
 % numToShow = randi(numel(results.Files), [1, 16]); % randomised
 showCollage(cdsTest.UnderlyingDatastores{1}, results, double(1):double(16)); % show 1:16
 % save collage
 saveas(gcf, ...
-    fullfile('images', 'segmentationOwn', ...
-    saveLocationStr, 'collage.png'));
+    fullfile('output', 'segmentationExist', saveLocationStr, 'collage.png'));
 
 % evaluate model
 metrics = evaluateSemanticSegmentation(results, ...
@@ -430,7 +320,7 @@ cm = confusionchart(metrics.ConfusionMatrix.Variables, ...
 cm.Title = 'Normalized Confusion Matrix (%)';
 % save conf matrix
 saveas(gcf, ...
-    fullfile('images', 'segmentationOwn', ...
+    fullfile('output', 'segmentationExist', ...
     saveLocationStr, 'confMat.png'));
 
 % calculate mean IoU
@@ -440,12 +330,12 @@ histogram(imageIoU)
 title('Image Mean IoU');
 % save histogram
 saveas(gcf, ...
-    fullfile('images', 'segmentationOwn', ...
+    fullfile('output', 'segmentationExist', ...
     saveLocationStr, 'hist.png'));
 
 % save settings to a .txt file(for readability)
-fileID = fopen(fullfile('images', ...
-    'segmentationOwn', ...
+fileID = fopen(fullfile('output', ...
+    'segmentationExist', ...
     saveLocationStr, ...
     'settings.txt'), "w");
 settingsText = sprintf(['Saved at: %s\n\n' ...
@@ -633,11 +523,3 @@ function out = fixClassLabels(data)
     out{1} = data{1};
     out{2} = C;
 end
-
-% unused
-% function loss = weightedCrossEntropyLoss(Y, T, weights)
-%     % Replace NaN values with 0
-%     T(isnan(T)) = 0;
-% 
-%     loss =  crossentropy(Y, T, weights, 'WeightsFormat', 'C');
-% end
